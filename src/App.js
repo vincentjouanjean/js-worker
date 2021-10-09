@@ -2,26 +2,29 @@ import Worker from "worker-loader!./Worker.js";
 
 document.body.appendChild(component());
 
-var executionDate;
-var data = [];
+let executionDate;
+let data = [];
 // Adds in an array, the elements received by packet 
-var dataTmp = [];
-var currentExec = 1;
-const worker = new Worker();
-worker.onmessage = receiveFromWorker;
+let dataTmp = [];
+let currentExec = 1;
+let workers = [];
 
 // Selectors
+const nbWorkersInput = document.getElementById('nb_workers');
 const nbElementsInput = document.getElementById('nb_elements');
 const nbPacketsInput = document.getElementById('nb_packets');
 const nbExecutionsInput = document.getElementById("nb_executions");
 const throttleDownInput = document.getElementById("throttle_down");
 const executionTimeInput = document.getElementById('executions_time');
+const counterPacketsInput = document.getElementById('counter_packets');
+const totalPacketsInput = document.getElementById('total_packets');
 
 function component() {
   const element = document.createElement('div'); 
   element.innerHTML = ` <div><button onclick=window.runWithWorker()>RUN WITH WORKER</button></div>
                         <div><button onclick=window.runWithoutWorker()>RUN WITHOUT WORKER</button></div>
                         <div><button onclick=window.cleanExecutionTime()>CLEAN</button></div>
+                        <div>Number of workers : <input id="nb_workers" "type="number" value="10""></input></div>
                         <div>Number of elements : <input id="nb_elements" "type="number" value="100""></input></div>
                         <div>Number of packets<input id="nb_packets" "type="number" value="1""></input></div>
                         <div>Number of executions<input id="nb_executions" "type="number" value="1""></input></div>
@@ -41,13 +44,18 @@ function component() {
                               </g>
                             </svg>
                         </div>
+                        <div>Counter : <span id="counter_packets"></span>/<span id="total_packets"></span></div>
                         `;
   return element;
 }
 
 function receiveFromWorker(e) {
     dataTmp[e.data.position] = Array.from(e.data.dataBuffer);
+    counterPacketsInput.innerHTML = dataTmp.length;
     if (e.data.position + 1 >= nbPacketsInput.value) {
+        while (dataTmp.length < nbPacketsInput.value) {
+            // Wait previous packets
+        }
         // Get all data
         data = dataTmp.flatMap(x => x);
 
@@ -75,16 +83,22 @@ function runWithoutWorker() {
 
 function runWithWorker() {
     clearVariables();
+    for (let i = 0; i < nbWorkersInput.value; i++) {
+        workers[i] = new Worker();
+        workers[i].onmessage = receiveFromWorker;
+    }
+    totalPacketsInput.innerHTML = nbPacketsInput.value;
     for (let i = 0; i < nbPacketsInput.value; i++) {
-        var values = range((nbElementsInput.value / nbPacketsInput.value).toFixed(0) * i + 1, nbElementsInput.value / nbPacketsInput.value * (i+1), 1);
-        var buffer = new Uint16Array(values);      
-        worker.postMessage({position: i, throttleDown: throttleDownInput.checked, throttleDownNumber: (3333).toFixed(0), dataBuffer: buffer}, [buffer.buffer]);
+        let values = range((nbElementsInput.value / nbPacketsInput.value).toFixed(0) * i + 1, nbElementsInput.value / nbPacketsInput.value * (i+1), 1);
+        let buffer = new Uint16Array(values);
+        let randomWorker = Math.floor(Math.random() * nbWorkersInput.value);
+        workers[randomWorker].postMessage({position: i, throttleDown: throttleDownInput.checked, throttleDownNumber: (3333).toFixed(0), dataBuffer: buffer}, [buffer.buffer]);
     }
 }
 
 function printLog(worker) {
-    var executionTime = Date.now() - executionDate;
-    var newSpan = executionTimeInput.appendChild(document.createElement('div'));
+    let executionTime = Date.now() - executionDate;
+    let newSpan = executionTimeInput.appendChild(document.createElement('div'));
     if (worker) {
         newSpan.innerHTML = `${currentExec} - Numbers of elements : ${nbElementsInput.value}, number of packets : ${nbPacketsInput.value}, execution time : ${executionTime + 'ms'}`;
     } else {
@@ -97,8 +111,14 @@ function cleanExecutionTime() {
 }
 
 function clearVariables() {
+    for (let i = 0; i < workers.length; i++) {
+        workers[i].terminate();
+    }
+    workers = [];
     dataTmp, data = [];
     executionDate = Date.now();
+    counterPacketsInput.innerHTML = '';
+    totalPacketsInput.innerHTML = '';
 }
 
 function range(start, stop, step) {
